@@ -1,45 +1,39 @@
-import { useEffect, useState } from "react";
-import './App.css'
-
-interface Todo {
-    id: number;
-    title: string;
-    done: boolean;
-}
+import { useState } from "react";
 
 export default function App() {
-    const [todos, setTodos] = useState<Todo[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [err, setErr] = useState<string>("");
+    const [email, setEmail] = useState("a@test.com");
+    const [password, setPassword] = useState("123456");
+    const [me, setMe] = useState<any>(null);
+    const [err, setErr] = useState("");
 
-    useEffect(() => {
-        (async () => {
-            try {
-                const res = await fetch("/api/todos"); // → 프록시가 8080으로 전달
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data: Todo[] = await res.json();
-                setTodos(data);
-            } catch (e) {
-                setErr(e instanceof Error ? e.message : String(e));
-            } finally {
-                setLoading(false);
-            }
-        })();
-    }, []);
+    const login = async () => {
+        try {
+            setErr("");
+            const r = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+            });
+            if (!r.ok) throw new Error(await r.text());
+            const { accessToken } = await r.json();
 
-    if (loading) return <div style={{ padding: 24 }}>로딩중…</div>;
-    if (err) return <div style={{ padding: 24, color: "crimson" }}>에러: {err}</div>;
+            const m = await fetch("/api/auth/me", {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            setMe(await m.json());
+        } catch (e: any) {
+            setErr(e.message || "login failed");
+        }
+    };
 
     return (
-        <div style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-            <h1>할 일 목록</h1>
-            <ul>
-                {todos.map((t) => (
-                    <li key={t.id}>
-                        {t.title} {t.done ? "✅" : "⏳"}
-                    </li>
-                ))}
-            </ul>
+        <div style={{ padding: 24 }}>
+            <h2>Login Test</h2>
+            <input value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="email" />
+            <input value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="password" type="password" />
+            <button onClick={login}>Login</button>
+            {err && <p style={{ color: "red" }}>{err}</p>}
+            {me && <pre>{JSON.stringify(me, null, 2)}</pre>}
         </div>
     );
 }
