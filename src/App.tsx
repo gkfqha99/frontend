@@ -34,6 +34,10 @@ export default function App() {
     const [password, setPassword] = useState("123456");
     const [nickname, setNickname] = useState("sul");
     const [newNick, setNewNick] = useState("");
+    /*비번변경↓*/
+    const [currPw, setCurrPw] = useState("");
+    const [newPw, setNewPw] = useState("");
+    const [pwMsg, setPwMsg] = useState("");
 
     /*
     * me: 로그인 성공 시 사용자 정보, 없으면 null
@@ -122,6 +126,21 @@ export default function App() {
         }
     };
 
+    //비번 바꾸는거
+    const changePassword = async () => {
+        setPwMsg("");
+        try {
+            await api<void>("/api/auth/me/password", {
+                method: "PUT",
+                body: JSON.stringify({ currentPassword: currPw, newPassword: newPw }),
+            });
+            setPwMsg("비밀번호가 변경되었어요.");
+            setCurrPw(""); setNewPw("");
+        } catch (e: unknown) {
+            setPwMsg(getErrorMessage(e, "Change password failed"));
+        }
+    };
+
 
     return (
         <div style={{ padding: 24, fontFamily: "Inter, system-ui, sans-serif" }}>
@@ -196,6 +215,31 @@ export default function App() {
                             Save
                         </button>
                     </div>
+
+                    {/* 비밀번호 변경 */}
+                    <div style={{ display: "grid", gap: 8, maxWidth: 360 }}>
+                        <strong>Change password</strong>
+                        <input
+                            value={currPw}
+                            onChange={(e) => setCurrPw(e.target.value)}
+                            placeholder="current password"
+                            type="password"
+                        />
+                        <input
+                            value={newPw}
+                            onChange={(e) => setNewPw(e.target.value)}
+                            placeholder="new password (min 6)"
+                            type="password"
+                        />
+                        <button
+                            onClick={changePassword}
+                            disabled={!currPw.trim() || newPw.trim().length < 6}
+                        >
+                            Change
+                        </button>
+                        {pwMsg && <small>{pwMsg}</small>}
+                    </div>
+
 
                     <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={() => window.location.reload()}>Refresh</button>
