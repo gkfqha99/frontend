@@ -33,6 +33,7 @@ export default function App() {
     const [email, setEmail] = useState("a@test.com");
     const [password, setPassword] = useState("123456");
     const [nickname, setNickname] = useState("sul");
+    const [newNick, setNewNick] = useState("");
 
     /*
     * me: 로그인 성공 시 사용자 정보, 없으면 null
@@ -107,6 +108,20 @@ export default function App() {
         setMe(null);    // 비로그인 상태로 전환
     };
 
+    //닉네임 업데이트 하는거
+    const updateNickname = async () => {
+        try {
+            const data = await api<Me>("/api/auth/me/nickname", {
+                method: "PUT",
+                body: JSON.stringify({ nickname: newNick }),
+            });
+            setMe(data);
+            setNewNick("");
+        } catch (err) {
+            alert(getErrorMessage(err, "Update nickname failed"));
+        }
+    };
+
 
     return (
         <div style={{ padding: 24, fontFamily: "Inter, system-ui, sans-serif" }}>
@@ -168,6 +183,20 @@ export default function App() {
                     >
             {JSON.stringify(me, null, 2)}
           </pre>
+
+                    {/* 닉네임 업데이트 UI */}
+                    <div style={{ display: "grid", gap: 8, maxWidth: 360 }}>
+                        <strong>Update nickname</strong>
+                        <input
+                            value={newNick}
+                            onChange={(e) => setNewNick(e.target.value)}
+                            placeholder="new nickname"
+                        />
+                        <button onClick={updateNickname} disabled={!newNick.trim()}>
+                            Save
+                        </button>
+                    </div>
+
                     <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={() => window.location.reload()}>Refresh</button>
                         <button onClick={handleLogout}>Logout</button>
