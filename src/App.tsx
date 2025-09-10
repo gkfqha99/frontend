@@ -1,20 +1,11 @@
-/* 흐름도
-1. 앱 시작 → 토큰 있으면 /me 확인 → 성공이면 로그인 상태
-
-2. 회원가입 → 성공 후 자동 로그인
-
-3. 로그인 → 토큰 저장 → /me 로 사용자 정보 렌더
-
-4. 로그아웃 → 토큰 삭제 → 로그인 폼 보이기
-*/
-
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react"; // ★ type-only import
+import type { FormEvent } from "react";
 import { api, auth } from "./lib/auth";
+import ProfileUploader from "./components/ProfileUploader";
 
 type Me = { id: number; email: string; nickname: string };
+type MeProfile = { id: number; email: string; nickname: string; profileImage?: string | null };
 
-// 에러 메시지 안전 추출 헬퍼 (any 금지)
 function getErrorMessage(err: unknown, fallback = "Request failed") {
     if (err instanceof Error) return err.message;
     if (typeof err === "string") return err;
@@ -27,46 +18,35 @@ function getErrorMessage(err: unknown, fallback = "Request failed") {
 
 export default function App() {
     const [me, setMe] = useState<Me | null>(null);
+    const [profile, setProfile] = useState<MeProfile | null>(null);
     const [error, setError] = useState("");
 
-    // 폼 상태(샘플 값)
     const [email, setEmail] = useState("a@test.com");
     const [password, setPassword] = useState("123456");
     const [nickname, setNickname] = useState("sul");
     const [newNick, setNewNick] = useState("");
-    /*비번변경↓*/
     const [currPw, setCurrPw] = useState("");
     const [newPw, setNewPw] = useState("");
     const [pwMsg, setPwMsg] = useState("");
-
-    /*
-    * me: 로그인 성공 시 사용자 정보, 없으면 null
-      error: 화면에 띄울 에러 문자열
-      email/password/nickname: 컨트롤드 인풋 값
-    * */
 
     // 앱 로드시 토큰 있으면 /me 확인
     useEffect(() => {
         (async () => {
             try {
-                if (auth.get()) {               // localStorage에 토큰 있는지
-                    const data = await api<Me>("/api/auth/me"); // 자동으로 Bearer 붙음
-                    setMe(data);                  // 로그인 상태로 전환
+                if (auth.get()) {
+                    const data = await api<Me>("/api/auth/me");
+                    setMe(data);
+                    // 프로필(이미지 포함)도 병행 로드
+                    const prof = await api<MeProfile>("/api/me/profile");
+                    setProfile(prof);
                 }
             } catch {
-                auth.clear();                   // 토큰이 깨졌으면 제거
+                auth.clear();
                 setMe(null);
+                setProfile(null);
             }
         })();
     }, []);
-    /*
-    마운트 1회 실행
-    토큰 있으면 /me로 검증 → 성공 시 me 세팅
-    실패(만료/위조)면 토큰 삭제
-    주의: "/api/..." 처럼 상대경로를 쓰면 프론트 dev 서버(5173)에서 백엔드(8080)로 보내기 위해 Vite proxy 설정이 필요해.
-        -> 보니까 이미 vite.config.ts에서 프록시 8080으로 설정해둬서 문제 없음
-    */
-
 
     const handleRegister = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -81,11 +61,6 @@ export default function App() {
             setError(getErrorMessage(err, "Register failed"));
         }
     };
-    /*
-    기본 제출 막기(SPA 특성)
-    api 호출(자동 JSON/에러 처리) → 성공 시 handleLogin 재사용
-    실패 시 error 상태에 메시지
-    * */
 
     const handleLogin = async (e?: FormEvent<HTMLFormElement>) => {
         e?.preventDefault();
@@ -95,24 +70,22 @@ export default function App() {
                 "/api/auth/login",
                 { method: "POST", body: JSON.stringify({ email, password }) }
             );
-            auth.set(accessToken);           // 토큰 저장(localStorage)
-            const data = await api<Me>("/api/auth/me"); // 토큰으로 내 정보 조회
+            auth.set(accessToken);
+            const data = await api<Me>("/api/auth/me");
             setMe(data);
+            const prof = await api<MeProfile>("/api/me/profile");
+            setProfile(prof);
         } catch (err: unknown) {
             setError(getErrorMessage(err, "Login failed"));
         }
     };
-    /*
-    로그인 성공 → 응답에서 accessToken 꺼내 저장
-    이어서 /me로 유저 정보 받아서 화면 상태 전환
-    */
 
     const handleLogout = () => {
-        auth.clear();   // 토큰 삭제
-        setMe(null);    // 비로그인 상태로 전환
+        auth.clear();
+        setMe(null);
+        setProfile(null);
     };
 
-    //닉네임 업데이트 하는거
     const updateNickname = async () => {
         try {
             const data = await api<Me>("/api/auth/me/nickname", {
@@ -121,12 +94,14 @@ export default function App() {
             });
             setMe(data);
             setNewNick("");
+            // 닉네임 변경 후 프로필도 갱신
+            const prof = await api<MeProfile>("/api/me/profile");
+            setProfile(prof);
         } catch (err) {
             alert(getErrorMessage(err, "Update nickname failed"));
         }
     };
 
-    //비번 바꾸는거
     const changePassword = async () => {
         setPwMsg("");
         try {
@@ -141,105 +116,77 @@ export default function App() {
         }
     };
 
-
     return (
         <div style={{ padding: 24, fontFamily: "Inter, system-ui, sans-serif" }}>
             <h2>Auth Demo</h2>
 
-            {!me ? (  // 로그인 전
+            {!me ? (
                 <div style={{ display: "grid", gap: 16, maxWidth: 360 }}>
-                    {/* 로그인 폼 */}
+                    {/* 로그인 */}
                     <form onSubmit={handleLogin} style={{ display: "grid", gap: 8 }}>
                         <strong>Login</strong>
-                        <input
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="email"
-                        />
-                        <input
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="password"
-                            type="password"
-                        />
+                        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email" />
+                        <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="password" type="password" />
                         <button type="submit">Login</button>
                     </form>
-                    {/* 회원가입 폼 */}
+
+                    {/* 회원가입 */}
                     <form onSubmit={handleRegister} style={{ display: "grid", gap: 8 }}>
                         <strong>Register</strong>
-                        <input
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="email"
-                        />
-                        <input
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="password"
-                            type="password"
-                        />
-                        <input
-                            value={nickname}
-                            onChange={(e) => setNickname(e.target.value)}
-                            placeholder="nickname"
-                        />
+                        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email" />
+                        <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="password" type="password" />
+                        <input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="nickname" />
                         <button type="submit">Register</button>
                     </form>
-                    {/* 에러 메시지 */}
+
                     {error && <p style={{ color: "crimson" }}>{error}</p>}
                 </div>
             ) : (
-                <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "grid", gap: 16 }}>
                     <strong>Me</strong>
-                    <pre
-                        style={{
-                            padding: 12,
-                            background: "#111",
-                            color: "#eee",
-                            borderRadius: 8,
-                            maxWidth: 520,
-                        }}
-                    >
-            {JSON.stringify(me, null, 2)}
+                    <pre style={{ padding: 12, background: "#111", color: "#eee", borderRadius: 8, maxWidth: 520 }}>
+{JSON.stringify(me, null, 2)}
           </pre>
 
-                    {/* 닉네임 업데이트 UI */}
+                    {/* 내 프로필(이미지 포함) */}
+                    {profile && (
+                        <div style={{ display: "grid", gap: 8, maxWidth: 520 }}>
+                            <strong>Profile</strong>
+                            {profile.profileImage ? (
+                                <img
+                                    src={`/upload/${profile.profileImage}`}
+                                    alt="profile"
+                                    style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid #333" }}
+                                />
+                            ) : (
+                                <em>프로필 이미지가 없습니다.</em>
+                            )}
+                        </div>
+                    )}
+
+                    {/* 프로필 업로더 */}
+                    <ProfileUploader
+                        onUpdated={async () => {
+                            const prof = await api<MeProfile>("/api/me/profile");
+                            setProfile(prof);
+                        }}
+                    />
+
+                    {/* 닉네임 변경 */}
                     <div style={{ display: "grid", gap: 8, maxWidth: 360 }}>
                         <strong>Update nickname</strong>
-                        <input
-                            value={newNick}
-                            onChange={(e) => setNewNick(e.target.value)}
-                            placeholder="new nickname"
-                        />
-                        <button onClick={updateNickname} disabled={!newNick.trim()}>
-                            Save
-                        </button>
+                        <input value={newNick} onChange={(e) => setNewNick(e.target.value)} placeholder="new nickname" />
+                        <button onClick={updateNickname} disabled={!newNick.trim()}>Save</button>
                     </div>
 
                     {/* 비밀번호 변경 */}
                     <div style={{ display: "grid", gap: 8, maxWidth: 360 }}>
                         <strong>Change password</strong>
-                        <input
-                            value={currPw}
-                            onChange={(e) => setCurrPw(e.target.value)}
-                            placeholder="current password"
-                            type="password"
-                        />
-                        <input
-                            value={newPw}
-                            onChange={(e) => setNewPw(e.target.value)}
-                            placeholder="new password (min 6)"
-                            type="password"
-                        />
-                        <button
-                            onClick={changePassword}
-                            disabled={!currPw.trim() || newPw.trim().length < 6}
-                        >
-                            Change
-                        </button>
+                        <input value={currPw} onChange={(e) => setCurrPw(e.target.value)} placeholder="current password" type="password" />
+                        <input value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="new password (min 6)" type="password" />
+                        <button onClick={changePassword} disabled={!currPw.trim() || newPw.trim().length < 6}>Change</button>
                         {pwMsg && <small>{pwMsg}</small>}
                     </div>
-
 
                     <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={() => window.location.reload()}>Refresh</button>
@@ -249,10 +196,4 @@ export default function App() {
             )}
         </div>
     );
-    /*
-    me 유무로 화면 분기
-    폼 onSubmit 은 위 핸들러에 연결
-    로그인 후엔 /me 객체를 그대로 보여주고, Logout 버튼 제공
-    Refresh 는 단순 새로고침 → useEffect 재실행으로 토큰 재검증
-    */
 }
